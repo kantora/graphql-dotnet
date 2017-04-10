@@ -133,21 +133,12 @@ namespace GraphQL
                             operation.Variables,
                             config.Inputs);
 
-                        var context = new PreciseComplexityContext
-                                          {
-                                              Configuration =
-                                                  config.PreciseComplexityConfiguration,
-                                              Document = document,
-                                              Fragments = document.Fragments,
-                                              Metrics = metrics,
-                                              Operation = operation,
-                                              Schema = config.Schema,
-                                              Variables = variableValues
-                                          };
 
-                        new PreciseComplexityAnalyser(this, context).Analyze(
-                            GetOperationRootType(document, config.Schema, operation),
-                            operation.SelectionSet);
+                        new PreciseComplexityAnalyser().Analyze(
+                            document, 
+                            config.Schema, 
+                            config.PreciseComplexityConfiguration, 
+                            variableValues);
                     }
                 }
 

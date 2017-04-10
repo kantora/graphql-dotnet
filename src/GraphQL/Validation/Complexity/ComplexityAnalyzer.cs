@@ -66,7 +66,7 @@ namespace GraphQL.Validation.Complexity
 
             TreeIterator(doc, _result, avgImpact, avgImpact, 1d);
 
-            // Cleanup in case Analyze is called again
+            // Cleanup in case AnalyzeOld is called again
             _loopCounter = 0;
             var retVal = _result;
             _result = new ComplexityResult();

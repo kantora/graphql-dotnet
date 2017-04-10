@@ -6,6 +6,8 @@ using GraphQL.Types;
 
 namespace GraphQL.Validation
 {
+    using System;
+
     public class TypeInfo : INodeVisitor
     {
         private readonly ISchema _schema;
@@ -55,6 +57,34 @@ namespace GraphQL.Validation
         public QueryArgument GetArgument()
         {
             return _argument;
+        }
+
+        public T GetFieldArgumentValue<T>(Variables variables, string argumentName, T defaultValue = default(T))
+        {
+            var fieldType = this.GetFieldDef();
+            var field = this._ancestorStack.Peek() as Field;
+            
+            if (fieldType == null || field == null)
+            {
+                return defaultValue;
+            }
+
+            if (fieldType.Arguments == null || !fieldType.Arguments.Any())
+            {
+                return defaultValue;
+            }
+
+            var arg = fieldType.Arguments.FirstOrDefault(a => a.Name == argumentName);
+            if (arg == null)
+            {
+                return defaultValue;
+            }
+
+            var value = field.Arguments.ValueFor(argumentName);
+            var type = arg.ResolvedType;
+
+            var resolvedValue = CoerceValue(type, value, variables);
+            return resolvedValue != null ? (T)resolvedValue : defaultValue;
         }
 
         public void Enter(INode node)
@@ -244,6 +274,73 @@ namespace GraphQL.Validation
             {
                 var complexType = parentType as IComplexGraphType;
                 return complexType.Fields.FirstOrDefault(x => x.Name == field.Name);
+            }
+
+            return null;
+        }
+
+        // todo: remove duplicate code from document executor
+        public static object CoerceValue(IGraphType type, IValue input, Variables variables = null)
+        {
+            if (type is NonNullGraphType)
+            {
+                var nonNull = type as NonNullGraphType;
+                return CoerceValue(nonNull.ResolvedType, input, variables);
+            }
+
+            if (input == null)
+            {
+                return null;
+            }
+
+            var variable = input as VariableReference;
+            if (variable != null)
+            {
+                return variables != null
+                           ? variables.ValueFor(variable.Name)
+                           : null;
+            }
+
+            if (type is ListGraphType)
+            {
+                var listType = type as ListGraphType;
+                var listItemType = listType.ResolvedType;
+                var list = input as ListValue;
+                return list != null
+                           ? list.Values.Map(item => CoerceValue(listItemType, item, variables)).ToArray()
+                           : new[] { CoerceValue(listItemType, input, variables) };
+            }
+
+            if (type is IObjectGraphType || type is InputObjectGraphType)
+            {
+                var complexType = type as IComplexGraphType;
+                var obj = new Dictionary<string, object>();
+
+                var objectValue = input as ObjectValue;
+                if (objectValue == null)
+                {
+                    return null;
+                }
+
+                complexType.Fields.Apply(field =>
+                    {
+                        var objectField = objectValue.Field(field.Name);
+                        if (objectField != null)
+                        {
+                            var fieldValue = CoerceValue(field.ResolvedType, objectField.Value, variables);
+                            fieldValue = fieldValue ?? field.DefaultValue;
+
+                            obj[field.Name] = fieldValue;
+                        }
+                    });
+
+                return obj;
+            }
+
+            if (type is ScalarGraphType)
+            {
+                var scalarType = type as ScalarGraphType;
+                return scalarType.ParseLiteral(input);
             }
 
             return null;
